@@ -4,8 +4,6 @@ import { AuthContext } from "../../context/AuthContext";
 import axios from "axios";
 import { format } from 'timeago.js';
 import { SocketContext } from "../../context/SocketContext";
-import { FiSend } from "react-icons/fi"; // أيقونة إرسال بسيطة
-
 import { FaPaperPlane } from "react-icons/fa";
 import { useNotificationStore } from "../../lib/notificationStore";
 
@@ -15,6 +13,24 @@ function Chat({ chats }) {
   const { socket } = useContext(SocketContext);
   const messageEndRef = useRef();
   const decrease = useNotificationStore((state) => state.decrease);
+
+  const isMyMessage = (message) => {
+    try {
+    
+      const messageSenderId = 
+        message.userId?._id ||  
+        message.userId?.id ||  
+        message.userId;         
+      
+      return (
+        messageSenderId === currentUser.id || 
+        messageSenderId === currentUser._id
+      );
+    } catch (err) {
+      console.error("Error checking message ownership:", err);
+      return false;
+    }
+  };
 
   useEffect(() => {
     const markAsRead = async (chatId) => {
@@ -61,15 +77,14 @@ function Chat({ chats }) {
     const text = e.target.text.value.trim();
     if (!text || !chat) return;
   
-    // 1. إنشاء رسالة مؤقتة
+   
     const tempMessage = {
       _id: Date.now().toString(),
       text,
-      userId: { _id: currentUser._id }, // استخدم `_id` وليس `id`
+      userId: currentUser.id, 
       createdAt: new Date(),
     };
   
-    // 2. تحديث الواجهة فورًا
     setChat((prev) => ({
       ...prev,
       messages: [...prev.messages, tempMessage],
@@ -78,7 +93,6 @@ function Chat({ chats }) {
     e.target.reset();
   
     try {
-      // 3. إرسال الرسالة للخادم
       const res = await axios.post(
         `http://localhost:8800/api/messages/${chat._id}`,
         { text },
@@ -91,7 +105,6 @@ function Chat({ chats }) {
         }
       );
   
-      // 4. استبدال الرسالة المؤقتة بالحقيقية
       setChat((prev) => ({
         ...prev,
         messages: prev.messages.map((msg) =>
@@ -99,12 +112,11 @@ function Chat({ chats }) {
         ),
       }));
   
-     
       socket.emit("sendMessage", {
         receiverId: chat.receiver._id,
         data: {
           ...res.data,
-          chatId: chat._id, 
+          chatId: chat._id,
         },
       });
     } catch (err) {
@@ -126,6 +138,7 @@ function Chat({ chats }) {
         },
         withCredentials: true,
       });
+      
       if (!res.data.seenBy.includes(currentUser.id)) {
         decrease();
       }
@@ -145,7 +158,7 @@ function Chat({ chats }) {
             key={c._id}
             style={{
               backgroundColor:
-                c.seenBy.includes(currentUser._id) || chat?._id === c._id
+                c.seenBy.includes(currentUser.id) || chat?._id === c._id
                   ? "white"
                   : "#fecd514e",
             }}
@@ -175,16 +188,9 @@ function Chat({ chats }) {
               <div
                 className="chatMessage"
                 style={{
-                  alignSelf:
-                    message.userId._id === currentUser.id
-                      ? "flex-start"
-                      : "flex-end",
-                  textAlign:
-                    message.userId._id === currentUser.id ? "right" : "left",
-                  backgroundColor:
-                    message.userId._id === currentUser.id
-                      ? "#A5D6A750"
-                      : "#white",
+                  alignSelf: isMyMessage(message) ? "flex-start" : "flex-end",
+                  textAlign: isMyMessage(message) ? "left" : "right",
+                  backgroundColor: isMyMessage(message) ? "#A5D6A750" : "white",
                   borderRadius: "12px",
                   padding: "8px 12px",
                   margin: "4px 0",
@@ -198,13 +204,12 @@ function Chat({ chats }) {
             ))}
             <div ref={messageEndRef} />
           </div>
-
+                
           <form onSubmit={handleSubmit} className="bottom">
             <textarea name="text" placeholder="Type a message..." />
             <button type="submit" className="send-button">
-  <FaPaperPlane className="send-icon" />
-
-</button>
+              <FaPaperPlane className="send-icon" />
+            </button>
           </form>
         </div>
       )}
